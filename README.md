@@ -1,66 +1,42 @@
 # gosh
 
-A POSIX-style shell written from scratch in Go. It has a lexer, a parser and
-an interpreter for the parts of the shell language people use every day:
-pipelines, `&&`/`||`/`;` lists, background jobs, redirections, quoting,
-variables, command substitution, globbing, aliases and a handful of builtins.
-No dependencies outside the Go standard library.
+Um shell estilo POSIX em Go. Lexer, parser e interpretador pras partes da linguagem do shell que a gente usa todo dia: pipes, `&&`/`||`/`;`, jobs em background, redirecionamentos, aspas, variáveis, command substitution, globbing, aliases e uns builtins. Nada fora da biblioteca padrão do Go.
+
+Aprendi Go fazendo isso e foi uma boa escolha: goroutines + `os.Pipe` deixam um pipeline de N comandos parecer coisa de brinquedo.
 
 ```sh
 go build -o gosh .
-./gosh                       # interactive
-./gosh script.sh             # run a script
-./gosh -c 'ls | wc -l'       # run one command line
+./gosh                       # interativo
+./gosh script.sh
+./gosh -c 'ls | wc -l'
 ```
 
-## What works
-
 ```sh
-cat *.go | grep -c func                       # pipes and globbing
-make && ./app || echo "build failed"          # && || short-circuit lists
+cat *.go | grep -c func                       # pipes e globbing
+make && ./app || echo "build failed"          # listas com curto-circuito
 sort < in.txt > out.txt 2> errors.log         # < > >> 2> 2>> 2>&1
-NAME="world"; echo "hello $NAME ${NAME}!"     # variables, quoting
-files=$(ls | wc -l); echo "$files files"      # command substitution, $(..) and `..`
-GOOS=linux go build                           # per-command environment
-alias ll='ls -la'; ll ~/projects              # aliases, tilde expansion
-sleep 10 &                                    # background jobs
-false; echo $?                                # exit status
-source ~/.goshrc                              # run a file in the current shell
+NAME="world"; echo "hello $NAME ${NAME}!"     # variáveis e aspas
+files=$(ls | wc -l); echo "$files files"      # $(..) e `..`
+GOOS=linux go build                           # ambiente por comando
+alias ll='ls -la'; ll ~/projects              # alias e til
+sleep 10 &                                    # background
+false; echo $?                                # status de saída
+source ~/.goshrc
 ```
 
-Builtins: `cd` `pwd` `echo` `exit` `export` `unset` `env` `set` `alias`
-`unalias` `history` `type` `true` `false` `source` `.` `help`.
+Builtins: `cd pwd echo exit export unset env set alias unalias history type true false source . help`.
 
-## How it works
+## Por dentro
 
-1. **Lexer** (`lexer.go`) splits the line into words and operators. A word
-   keeps its quotes and `$...` syntax verbatim, but the lexer understands
-   quoting and `$( ... )` nesting so that spaces inside them do not end the
-   word.
-2. **Parser** (`parser.go`) builds a small AST: a list of pipelines joined by
-   `&&`, `||`, `;` or `&`; each pipeline is a list of commands; each command
-   has words and redirections.
-3. **Expansion** (`expand.go`) runs at execution time, one word at a time:
-   tilde, quote removal, `$VAR` / `${VAR}` / `$?` / `$$`, command
-   substitution (executed in a child shell writing to a buffer), field
-   splitting of unquoted expansions, then globbing with `filepath.Glob`.
-4. **Execution** (`shell.go`, `builtins.go`): builtins receive the command's
-   stdin/stdout/stderr as plain `io` values, so they work inside pipelines and
-   under redirections exactly like external programs. Pipelines connect
-   commands with `os.Pipe` and run each stage in a goroutine; external
-   programs use `os/exec`. `&&`/`||` are evaluated left to right against the
-   status of the previous pipeline.
+1. O **lexer** (`lexer.go`) separa palavras e operadores. Uma palavra guarda as aspas e o `$...` como estão, mas o lexer entende aspas e `$( ... )` aninhado o suficiente pra um espaço lá dentro não terminar a palavra.
+2. O **parser** (`parser.go`) monta uma AST pequena: lista de pipelines ligados por `&&`, `||`, `;` ou `&`; cada pipeline é uma lista de comandos; cada comando tem palavras e redirecionamentos.
+3. A **expansão** (`expand.go`) acontece na hora de executar, palavra por palavra e nessa ordem: til, remoção de aspas, `$VAR`/`${VAR}`/`$?`/`$$`, command substitution (roda num shell filho escrevendo num buffer), field splitting do que não estava entre aspas, e por fim glob.
+4. A **execução** (`shell.go`, `builtins.go`): builtins recebem stdin/stdout/stderr como valores `io`, então funcionam dentro de pipes e com redirecionamento igual a programa externo. Pipelines ligam os comandos com `os.Pipe` e rodam cada estágio numa goroutine.
 
-## Tests
+A coisa mais sutil que eu errei na primeira versão: `a && b || c` é avaliado da esquerda pra direita olhando o status do pipeline anterior, não é uma árvore de precedência. Tinha teste falhando por isso e demorei pra entender que o *bash* que estava certo.
 
-```sh
-go test ./...
-```
+Testes: `go test ./...` (lexer, parser e linhas de comando reais passando por `cat`, `tr`, `sort`, `printenv`).
 
-The tests exercise the lexer and parser directly, then run real command lines
-through the shell (using `cat`, `tr`, `sort`, `printenv`, etc.) and compare the
-captured output.
+---
 
-## License
-
-MIT
+**EN:** a POSIX-style shell in Go with a lexer, parser and interpreter for pipelines, `&&`/`||`/`;` lists, background jobs, redirections, quoting, variables, command substitution, globbing, aliases and a set of builtins that work inside pipelines like external programs. Standard library only; `go test ./...` runs real command lines through it. MIT.
