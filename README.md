@@ -1,5 +1,7 @@
 # gosh
 
+> 🇺🇸 [English version below](#english)
+
 Um shell estilo POSIX em Go. Lexer, parser e interpretador pras partes da linguagem do shell que a gente usa todo dia: pipes, `&&`/`||`/`;`, jobs em background, redirecionamentos, aspas, variáveis, command substitution, globbing, aliases e uns builtins. Nada fora da biblioteca padrão do Go.
 
 Aprendi Go fazendo isso e foi uma boa escolha: goroutines + `os.Pipe` deixam um pipeline de N comandos parecer coisa de brinquedo.
@@ -39,4 +41,43 @@ Testes: `go test ./...` (lexer, parser e linhas de comando reais passando por `c
 
 ---
 
-**EN:** a POSIX-style shell in Go with a lexer, parser and interpreter for pipelines, `&&`/`||`/`;` lists, background jobs, redirections, quoting, variables, command substitution, globbing, aliases and a set of builtins that work inside pipelines like external programs. Standard library only; `go test ./...` runs real command lines through it. MIT.
+## English
+
+A POSIX-style shell in Go. Lexer, parser and interpreter for the parts of the shell language we use every day: pipes, `&&`/`||`/`;`, background jobs, redirections, quoting, variables, command substitution, globbing, aliases and a few builtins. Nothing outside Go's standard library.
+
+I learned Go doing this and it was a good choice: goroutines + `os.Pipe` make a pipeline of N commands look like a toy.
+
+```sh
+go build -o gosh .
+./gosh                       # interactive
+./gosh script.sh
+./gosh -c 'ls | wc -l'
+```
+
+```sh
+cat *.go | grep -c func                       # pipes and globbing
+make && ./app || echo "build failed"          # short-circuit lists
+sort < in.txt > out.txt 2> errors.log         # < > >> 2> 2>> 2>&1
+NAME="world"; echo "hello $NAME ${NAME}!"     # variables and quotes
+files=$(ls | wc -l); echo "$files files"      # $(..) and `..`
+GOOS=linux go build                           # per-command environment
+alias ll='ls -la'; ll ~/projects              # alias and tilde
+sleep 10 &                                    # background
+false; echo $?                                # exit status
+source ~/.goshrc
+```
+
+Builtins: `cd pwd echo exit export unset env set alias unalias history type true false source . help`.
+
+## Inside
+
+1. The **lexer** (`lexer.go`) splits words and operators. A word keeps the quotes and the `$...` as they are, but the lexer understands quotes and nested `$( ... )` well enough that a space in there doesn't end the word.
+2. The **parser** (`parser.go`) builds a small AST: a list of pipelines joined by `&&`, `||`, `;` or `&`; each pipeline is a list of commands; each command has words and redirections.
+3. **Expansion** (`expand.go`) happens at execution time, word by word and in this order: tilde, quote removal, `$VAR`/`${VAR}`/`$?`/`$$`, command substitution (runs in a child shell writing to a buffer), field splitting of whatever wasn't quoted, and finally glob.
+4. **Execution** (`shell.go`, `builtins.go`): builtins receive stdin/stdout/stderr as `io` values, so they work inside pipes and with redirection just like an external program. Pipelines connect the commands with `os.Pipe` and run each stage in a goroutine.
+
+The most subtle thing I got wrong in the first version: `a && b || c` is evaluated left to right looking at the status of the previous pipeline, it's not a precedence tree. I had a failing test because of this and it took me a while to understand that *bash* was the one that was right.
+
+Tests: `go test ./...` (lexer, parser and real command lines going through `cat`, `tr`, `sort`, `printenv`).
+
+MIT.
